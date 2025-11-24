@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice PDF Downloader</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: #f7f7f7;
+      color: #333;
+    }
+    .message {
+      font-size: 1.2rem;
+      text-align: center;
+      padding: 20px;
+      max-width: 90%;
+    }
+  </style>
+  <!-- jsPDF library from CDN to generate PDFs in the browser -->
+  <!-- Load jsPDF from CDN. The integrity value has been updated to match the current version. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+          integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA=="
+          crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="message">Preparing your invoice download...</div>
+  <script>
+    /**
+     * Decode a base64 string into a Unicode string.
+     * Supports URL-safe base64 variants and ensures proper handling
+     * of multibyte characters (e.g., currency symbols).
+     *
+     * @param {string} str Base64 encoded string (URL-safe allowed)
+     * @returns {string} Decoded Unicode string
+     */
+    function decodeBase64Unicode(str) {
+      // Replace URL-safe characters back to their standard equivalents
+      str = (str || '').replace(/-/g, '+').replace(/_/g, '/');
+      // Pad out the string if its length isn't a multiple of 4
+      while (str.length % 4) {
+        str += '=';
+      }
+      // Decode the base64 into binary string
+      const binaryString = atob(str);
+      // Convert binary string to a Uint8Array for UTF‑8 decoding
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      // Decode the bytes into a Unicode string
+      const decoder = new TextDecoder('utf-8');
+      return decoder.decode(bytes);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const params = new URLSearchParams(window.location.search);
+      let encodedData = params.get('data');
+      // If no data parameter is supplied, inform the user
+      if (!encodedData) {
+        const msgEl = document.querySelector('.message');
+        msgEl.textContent = 'No invoice data was provided in the URL. Please include a base64-encoded invoice as the "data" query parameter.';
+        return;
+      }
+      // Replace any spaces with '+' because in URL query parameters
+      // '+' characters are often decoded as spaces when not URL‑encoded.
+      // This ensures the base64 string is reconstructed correctly.
+      encodedData = encodedData.replace(/ /g, '+');
+      let invoiceText;
+      try {
+        invoiceText = decodeBase64Unicode(encodedData);
+      } catch (err) {
+        console.error('Error decoding base64 data:', err);
+        const msgEl = document.querySelector('.message');
+        msgEl.textContent = 'Failed to decode the provided base64 invoice data.';
+        return;
+      }
+      // Initialize margins
+      const marginLeft = 40;
+      const marginTop = 40;
+      // Convert the invoice text into lines
+      const lines = invoiceText.split(/\r?\n/);
+      // Create a canvas to draw the invoice. Rendering text on a canvas allows us
+      // to preserve the exact spacing of the original text when embedding into
+      // the PDF as an image.
+      const lineHeightPx = 18; // pixel height for each line
+      // Determine canvas width by measuring the longest line
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.font = '12pt Courier New, monospace';
+      let maxLineWidth = 0;
+      lines.forEach(function (ln) {
+        const width = tempCtx.measureText(ln).width;
+        if (width > maxLineWidth) maxLineWidth = width;
+      });
+      const canvasWidth = Math.ceil(maxLineWidth) + 10; // add small padding
+      const canvasHeight = lines.length * lineHeightPx;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d');
+      // Set text styles
+      ctx.fillStyle = '#000000';
+      ctx.font = '12pt Courier New, monospace';
+      ctx.textBaseline = 'top';
+      // Draw each line onto the canvas
+      lines.forEach(function (ln, index) {
+        ctx.fillText(ln, 0, index * lineHeightPx);
+      });
+      // Convert the canvas to a PNG data URL
+      const imgData = canvas.toDataURL('image/png');
+      // Create the PDF and embed the image
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      // Convert canvas pixel dimensions to PDF points (1 pixel ≈ 0.75 pt)
+      const pdfWidth = canvasWidth * 0.75;
+      const pdfHeight = canvasHeight * 0.75;
+      // If the image height exceeds the page height minus margins, scale it down to fit
+      const pageHeight = doc.internal.pageSize.getHeight() - 2 * marginTop;
+      const scaleFactor = pdfHeight > pageHeight ? pageHeight / pdfHeight : 1;
+      const finalWidth = pdfWidth * scaleFactor;
+      const finalHeight = pdfHeight * scaleFactor;
+      doc.addImage(imgData, 'PNG', marginLeft, marginTop, finalWidth, finalHeight);
+      doc.save('invoice.pdf');
+      const msgEl = document.querySelector('.message');
+      msgEl.textContent = 'Your invoice is downloading...';
+    });
+  </script>
+</body>
+</html>
