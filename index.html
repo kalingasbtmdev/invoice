@@ -82,9 +82,9 @@
         msgEl.textContent = 'Failed to decode the provided base64 invoice data.';
         return;
       }
-      // Initialize margins
-      const marginLeft = 40;
-      const marginTop = 40;
+      // Initialize margins (smaller to maximize printable area)
+      const marginLeft = 20;
+      const marginTop = 20;
       // Convert the invoice text into lines
       const lines = invoiceText.split(/\r?\n/);
       // Create a canvas to draw the invoice. Rendering text on a canvas allows us
@@ -122,12 +122,16 @@
       // Convert canvas pixel dimensions to PDF points (1 pixel ≈ 0.75 pt)
       const pdfWidth = canvasWidth * 0.75;
       const pdfHeight = canvasHeight * 0.75;
-      // If the image height exceeds the page height minus margins, scale it down to fit
+      // Scale the image to fit within page bounds while preserving aspect ratio
+      const pageWidth = doc.internal.pageSize.getWidth() - 2 * marginLeft;
       const pageHeight = doc.internal.pageSize.getHeight() - 2 * marginTop;
-      const scaleFactor = pdfHeight > pageHeight ? pageHeight / pdfHeight : 1;
+      const scaleFactor = Math.min(pageWidth / pdfWidth, pageHeight / pdfHeight);
       const finalWidth = pdfWidth * scaleFactor;
       const finalHeight = pdfHeight * scaleFactor;
-      doc.addImage(imgData, 'PNG', marginLeft, marginTop, finalWidth, finalHeight);
+      // Center the invoice on the page after scaling
+      const offsetX = marginLeft + (pageWidth - finalWidth) / 2;
+      const offsetY = marginTop + (pageHeight - finalHeight) / 2;
+      doc.addImage(imgData, 'PNG', offsetX, offsetY, finalWidth, finalHeight);
       doc.save('invoice.pdf');
       const msgEl = document.querySelector('.message');
       msgEl.textContent = 'Your invoice is downloading...';
